@@ -1,0 +1,49 @@
+#!/bin/sh
+
+# This script is designed for use with gitolite. In order for it to work,
+# the git/gitolite user's SSH keys will need to be present in the 
+# webserver user's authorized_keys file.
+# Also, a manual git clone / git checkout will need to be done on the target
+# webservsers initially (e.g. from the dev server, directory above httpdocs:
+# 
+# This can be done using the accompanying gitolite-auto-deploy.sh script, or by:
+# 
+# rm -rf httpdocs
+# git clone git@gitolite:reponame
+# git checkout live
+# git submodule update --init --recursive
+
+
+# SSH destinations.
+SSHLIVE=live@deployment.server
+SSHSTAGING=staging@deployment.server
+
+# This post-receive file can be updated remotely. if a file exists in the root of the repo called
+# deployment/post-receive, it is assumed to be a version-controlled instance of this file. Bear in mind
+# that this is potentially bad, as there is the possibility that the post-recive functionality could
+# get broken by an update to this file. The line below updates the post-receive hook.
+git show `git ls-tree \`git ls-tree live | grep deployment | cut -d ' ' -f3 | cut -f1\` | grep post-receive | cut -d ' ' -f3 | cut -f1` > hooks/post-receive
+#git show `git ls-tree live | grep post-receive | cut -d ' ' -f3 | cut -f1` > hooks/post-receive
+chmod u+x hooks/post-receive 
+
+# Read the name of the branch just committed ino $branch
+# creds: Deja, http://www.dejaaugustine.com/2011/05/leveraging-git-as-a-full-fledged-web-development-tool/
+if ! [ -t 0 ]; then 
+	read ref
+	BRANCH=`echo "$ref" | cut -d " " -f 3 | cut -d "/" -f 3`
+fi
+
+echo "[post receive] Started - branch ${BRANCH}"
+
+# SSH into the webserver. Doing it this way ensures correct file permissions. In the case that other users may edit files
+# directly on the server (or access the server via FTP), use git push to ensure their changes get propogated. update any submodules.
+case "$BRANCH" in
+
+	live)	
+		ssh $SSHLIVE 'cd httpdocs; git pull origin live'
+		;;
+
+	staging)
+		ssh $SSHSTAGING 'cd httpdocs; git pull origin staging'
+		;;
+esac
